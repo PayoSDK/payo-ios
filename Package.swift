@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "payo",
+    name: "payo-ios",
     platforms: [.iOS(.v15)],
     products: [
         .library(name: "payo", targets: ["payo"]),
