@@ -10,8 +10,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "payo",
-            url: "https://github.com/PayoSDK/payo-ios/releases/download/1.4.0/payo.xcframework.zip",
-            checksum: "a3f05c77fbe36691cb471ff989f080db29f2a23093be0099e26d2951a81ba5b4"
+            url: "https://github.com/PayoSDK/payo-ios/releases/download/1.5.0/payo.xcframework.zip",
+            checksum: "f50e609cdc025f6d4ce23ebe9a1f4c097f8dc23ede5af8dd90a852c26c9a6abe"
         ),
     ]
 )
