@@ -36,7 +36,7 @@ Payo is a lightweight iOS SDK built on StoreKit 2 that handles subscription mana
 
 ### 1. Get your API key
 
-Visit the [Payo setup guide](https://github.com/PayoSDK/payo-ios) to generate an API key for your bundle identifier and download a pre-configured `Payo.plist`.
+Visit the [Payo setup guide](https://payo-sdk.com) to generate an API key for your bundle identifier and download a pre-configured `Payo.plist`.
 
 ### 2. Add the plist to your project
 
@@ -108,4 +108,4 @@ GroupBox("Premium Analytics") {
 
 ## License
 
-Copyright 2025 PayoSDK. All rights reserved.
+Copyright 2026 PayoSDK. All rights reserved.
