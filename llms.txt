@@ -1,0 +1,211 @@
+# Payo SDK — AI Reference
+
+> This file is the complete Payo API reference for AI coding assistants.
+> If you are an AI tool (Claude, Cursor, Copilot, etc.), use ONLY these APIs — do not guess or invent methods.
+
+I have the Payo iOS subscription SDK installed and configured in my project (SPM package, Payo.plist with API key and product IDs are already set up). I need your help implementing subscription features.
+
+---
+
+## Purchases
+
+- **`Payo.purchase(_ productID: String) async throws -> PurchaseInfo`**
+  Presents the system payment sheet, verifies the transaction with Apple, finishes it, and updates `hasAccess` and all reactive state automatically. No manual receipt validation needed.
+  - Returns: `PurchaseInfo` with fields: `productID`, `transactionID`, `purchaseDate`, `expirationDate` (nil for lifetime), `originalTransactionID`
+  - Throws: `PayoError` — cases: `.userCancelled`, `.purchasePending`, `.productNotFound`, `.networkError`
+
+- **`PayoPurchaseButton(_ productID: String)`** — SwiftUI only. Drop-in button that auto-fetches price, detects free trials, handles purchase flow. One line.
+
+- **`PayoPurchaseButton(_ productID: String, onPurchase: (PurchaseInfo) -> Void, onError: (Error) -> Void)`** — with callbacks
+
+- **`PayoPurchaseButton("id") { product, isEligibleForTrial in YourCustomLabel() }`** — custom label builder, receives `ProductInfo` and `Bool`
+
+---
+
+## Access Control
+
+- **`Payo.hasAccess -> Bool`** — synchronous, works anywhere, updates automatically
+- **`Payo.hasAccess(_ productID: String) -> Bool`** — check if a specific product ID is active (e.g. `hasAccess("pro_monthly")`)
+- **`.requiresAccess() -> some View`** — SwiftUI modifier. Blurs + lock overlay, fully reactive. Unlocks on purchase/restore/renewal. Shows a default lock overlay with NO purchase UI — avoid using this bare unless there is a separate purchase path on screen.
+- **`.requiresAccess(_ message: String, icon: String)`** — custom message and SF Symbol icon
+- **`.requiresAccess { OverlayView() } -> some View`** — fully custom interactive overlay (buttons, links work inside). PREFERRED variant — use this to embed a paywall or purchase buttons so locked users can self-serve.
+- **`.requiresAccess(group: "product_id")`** — gate behind a specific product ID
+- **`UIView.setRequiresAccess(group: String? = nil)`** — UIKit equivalent, adds blur + lock overlay
+- **`UIView.removeRequiresAccess()`** — remove the UIKit gate
+- **`Payo.activeProductIDs -> Set<String>`** — all currently active product IDs (synchronous). Use to show which plan the user is on.
+- **`Payo.state -> PayoState (ObservableObject)`** — for custom reactive UI. Use `@ObservedObject var billing = Payo.state`, then `billing.hasAccess`
+- **`Payo.state.activeProductIDs -> Set<String>`** — reactive set of active product IDs, updates automatically on purchase/restore/expiry
+- **`Payo.state.$hasAccess`** — Combine publisher for UIKit (use with `.sink`)
+
+---
+
+## Tiers
+
+Tiers are named access levels (e.g. "pro") mapped to one or more product IDs. Instead of checking individual product IDs, check the tier. Configure tiers from your Payo dashboard.
+
+- **`Payo.hasAccess(_ id: String) -> Bool`** — synchronous. Returns true if any product mapped to this tier is active. Example: `Payo.hasAccess("pro")` returns true if the user owns `pro_monthly` OR `pro_annual`.
+- **`Payo.tiers -> [Tier]`** — all configured tiers with their current active state
+- **`Payo.tier(_ id: String) -> Tier?`** — get a specific tier by ID
+  - Tier fields: `id` (String), `productIDs` ([String]), `isActive` (Bool)
+- **`.requiresTier("pro") -> some View`** — SwiftUI modifier. Same as `.requiresAccess()` but gates behind a tier instead of a product ID.
+- **`.requiresTier("pro", message: "Pro Feature", icon: "star.fill")`** — with custom message and icon
+- **`Payo.state.tiers -> [Tier]`** — reactive, updates automatically on purchase/restore/expiry
+- Prefer `hasAccess("pro")` over `hasAccess("pro_monthly")` when the user has tiers configured. It handles multiple products mapping to the same tier.
+
+---
+
+## Subscription Status
+
+- **`Payo.subscriptionInfo() async -> SubscriptionInfo?`** — detailed info for the active subscription (first found)
+- **`Payo.subscriptionInfo(_ productID: String) async -> SubscriptionInfo?`** — detailed info for a specific product
+  - `SubscriptionInfo` fields: `productID`, `state` (SubscriptionState), `expirationDate` (Date?), `purchaseDate` (Date), `willAutoRenew` (Bool), `originalTransactionID` (UInt64)
+  - `SubscriptionState` enum: `.subscribed` (active), `.expired`, `.inGracePeriod` (payment failed, temporary access), `.inBillingRetry` (payment failed, Apple retrying), `.revoked` (refunded)
+  - Use for settings screens: show current plan, renewal date, cancellation status ("Ends [date]" when `willAutoRenew` is false), and billing issue banners (inGracePeriod/inBillingRetry).
+
+---
+
+## Product Info
+
+- **`Payo.allProductInfo() async -> [ProductInfo]`** — all configured products
+- **`Payo.productInfo(_ productID: String) async -> ProductInfo?`** — single product
+  - `ProductInfo` fields: `id`, `displayName`, `description`, `displayPrice` (localized string like "$4.99"), `price` (Decimal), `introOffer` (IntroOffer?)
+- **`Payo.isEligibleForIntroOffer() async -> Bool`**
+- **`Payo.isEligibleForIntroOffer(_ productID: String) async -> Bool`**
+  - `IntroOffer` fields: `displayPrice`, `periodCount`, `periodUnit` (.week/.month/.year), `periodValue` (days), `paymentMode` (.freeTrial/.payAsYouGo/.payUpFront)
+
+---
+
+## Paywall Offerings
+
+Paywall offerings group product IDs with metadata (e.g. a paywall ID or feature flags). Configure from your Payo dashboard.
+
+- **`Payo.currentOffering async -> Offering?`** — the current paywall offering (experiment-aware). If an A/B experiment is active, returns the offering for the user's assigned variant.
+- **`Payo.offering(_ id: String) async -> Offering?`** — get a specific offering by ID
+- **`Payo.allOfferings() async -> [Offering]`** — all configured paywall offerings
+- **`Payo.setCurrentOffering(_ id: String) async`** — override the current offering (e.g. after the user taps a promo banner)
+  - `Offering` fields: `id` (String), `productIDs` ([String]), `metadata` ([String: String])
+  - Use offerings to drive which products and paywall layout to show. The metadata dict can hold arbitrary keys like "paywall_id", "cta_text", "discount_label".
+
+---
+
+## Paywall Presentation
+
+The `.paywall()` modifier presents a fully custom paywall, automatically fetching the offering and its products. It also tracks `paywall_presented` and `paywall_dismissed` events.
+
+- **`.paywall(isPresented: Binding<Bool>, config: PaywallConfig = .init(), content: (Offering, [ProductInfo]) -> View)`**
+  The content closure receives the `Offering` (with metadata) and `[ProductInfo]` (with localized prices). Build any UI you want.
+
+- **`PaywallConfig` fields:**
+  - `offeringID: String?` — which offering to show (nil = current offering)
+  - `declineOfferingID: String?` — if set, when the user dismisses the paywall, it re-presents with this offering (e.g. a 50% off deal). Both presentations are tracked separately.
+  - `presentationStyle: .sheet` (default) or `.fullScreen`
+
+- **Decline flow example:**
+  ```swift
+  .paywall(isPresented: $show, config: .init(declineOfferingID: "sale_50_off")) { offering, products in
+      YourPaywallView(offering: offering, products: products)
+  }
+  ```
+  User sees the current offering first. If they dismiss, the SDK immediately re-presents with the "sale_50_off" offering — different products, same UI closure.
+
+- **Specific offering:**
+  ```swift
+  .paywall(isPresented: $show, config: .init(offeringID: "black_friday")) { offering, products in
+      YourPaywallView(offering: offering, products: products)
+  }
+  ```
+
+---
+
+## A/B Experiments
+
+Experiments assign users to variants, each mapping to a different paywall offering. Configure from your Payo dashboard. Variant assignment is deterministic (SHA256 of deviceID + experimentID) — no server round-trip needed.
+
+- **`Payo.activeExperiment() async -> Experiment?`** — the currently active experiment, if any
+- **`Payo.experiment(_ id: String) async -> Experiment?`** — get a specific experiment
+  - `Experiment` fields: `id` (String), `assignedVariant` (String), `offering` (Offering)
+  - Example: configure experiment "price_test" with variants "control" → "default" offering and "variant_a" → "sale_50_off" offering. `Payo.currentOffering` automatically returns the right offering for the user's variant.
+  - Results appear in the dashboard's A/B Experiments page with revenue per variant.
+
+---
+
+## Automatic Analytics (no code needed)
+
+These features work automatically — no SDK calls required:
+
+- **Conversion funnels:** The SDK tracks paywall views, purchase starts, completions, and cancellations automatically. Results appear in the dashboard.
+- **Event log:** Every purchase, renewal, cancellation, and refund is logged. Visible in the dashboard's event log.
+- **Search Ads ROI:** On first launch, the SDK sends the Apple Search Ads attribution token to the backend. Campaign, ad group, and keyword data appear in the dashboard.
+- **MRR & churn:** Calculated from Apple Server Notifications. No SDK code needed — just set up Server Notifications in App Store Connect (covered in the setup wizard).
+
+---
+
+## Account Management
+
+- **`Payo.restorePurchases() async throws`** — re-syncs purchases with the App Store. After restoring, `hasAccess`, `Payo.state`, and all `.requiresAccess()` overlays update automatically.
+- **`Payo.showManageSubscriptions() async throws`** — opens Apple's native subscription management sheet where users can upgrade, downgrade, or cancel. If the user changes their subscription, access state updates automatically when the sheet is dismissed.
+- **`Payo.beginRefundRequest(_ productID: String) async throws -> Transaction.RefundRequestStatus`** — opens Apple's native refund sheet. If Apple approves the refund, access is automatically revoked.
+- **`Payo.presentOfferCodeRedeemSheet() async throws`** — iOS 16+. Opens Apple's native offer code redemption sheet where users can enter a promo code.
+
+---
+
+## State & Debug
+
+- **`Payo.refreshAccess() async`** — force re-query StoreKit for the user's current active purchases and update `hasAccess` accordingly. Rarely needed — the SDK auto-refreshes on app foreground, transaction updates, and subscription expiry.
+- **`Payo.reset() async`** — clears all billing state, stops the transaction observer, and re-initializes everything. Use when a user logs out. After reset, `hasAccess` will reflect the new state and all reactive UI updates.
+- **`Payo.enableDebug(_ enabled: Bool)`** — enable `[Payo]` console logs
+
+---
+
+## Common Patterns
+
+- **Soft paywall + re-gate:** Use `.requiresAccess { YourPaywallView() }` on content views. This way the paywall IS the lock screen — if access expires, the user sees the paywall again automatically. The overlay is fully reactive and dismisses itself on purchase/restore/renewal.
+- **Hard paywall in onboarding:** Show the paywall during onboarding, BUT still use `.requiresAccess { PaywallView() }` on gated content so expired users can re-purchase without a dead end.
+- **Never use bare `.requiresAccess()`** without a separate purchase path visible on screen. The default overlay has no purchase UI — the user will be stuck.
+- **Paywall with plan selection:** Use `Payo.allProductInfo()` to fetch products, display them with `displayPrice`, let the user pick, then call `Payo.purchase(selectedID)`. Always pre-select the best-value plan.
+- **Settings screen:** Use `Payo.subscriptionInfo()` to show current plan, renewal date (`expirationDate`), cancellation status (`willAutoRenew`), and billing issues (`state == .inGracePeriod || .inBillingRetry`). Use `Payo.state.activeProductIDs` for reactive plan display.
+- **Cancellation detection:** When state is `.subscribed` but `willAutoRenew` is false, the user has cancelled. Show "Expires on [expirationDate]" instead of "Renews on [expirationDate]". The subscription is still active until `expirationDate` — only the renewal is cancelled.
+- **Tier-based gating:** Use `.requiresTier("pro") { PaywallView() }` instead of `.requiresAccess(group: "pro_monthly")` when tiers are configured. This way if you add a new product (e.g. `pro_weekly`), existing code keeps working.
+
+---
+
+## Rules (always follow these)
+
+- `import payo` in every file that uses the SDK
+- No initialization code beyond `Payo.configure()` needed — the SDK fetches config from the server
+- Never hard-code prices — always use `displayPrice` from `ProductInfo`
+- Always include a "Restore Purchases" button (Apple requires it for App Store review)
+- Always include a "Manage Subscription" option
+- Handle `PayoError.userCancelled` silently — do not show an error alert when the user cancels
+- All access checks, overlays, and state are fully reactive — they update automatically on purchase, restore, renewal, expiry, and foreground return
+- Always handle the case where `Payo.allProductInfo()` returns an empty array (e.g., network failure). Show a retry option — never leave the UI blank or silently empty.
+- Every app must handle the complete subscription lifecycle: first launch → purchase → active use → expiry → re-purchase. Ensure the user can always reach a paywall from any locked state.
+
+---
+
+## What can I help you build?
+
+**Paywalls & Purchasing:**
+1. Build a paywall screen — show my subscription plans with pricing and a buy button
+2. Build an onboarding flow — welcome screens that lead into a paywall before the main app
+3. Add a drop-in purchase button — use PayoPurchaseButton for a one-line buy button with smart labels
+4. Add a decline flow — if a user dismisses the paywall, show them a second offer (e.g. 50% off) using declineOfferingID
+
+**Access Control:**
+5. Lock a screen behind a subscription — blur + overlay that unlocks automatically on purchase
+6. Set up multi-tier access — gate different features behind different tiers (e.g. pro vs premium)
+7. Build a "pro upgrade" upsell — inline prompt or banner that nudges free users to subscribe
+
+**Account & Settings:**
+8. Add a settings page — current plan, renewal date, restore purchases, manage subscription, billing issues
+9. Handle billing issues — show banners for grace period or billing retry and guide users to fix payment
+10. Show cancellation status — detect when a user has cancelled and show "Expires on [date]" messaging
+
+**A/B Testing & Offerings:**
+11. Set up an A/B experiment — test two different paywalls or price points and track which converts better
+12. Use paywall offerings to drive paywall content — load product IDs and metadata from an offering instead of hardcoding
+
+**Other:**
+13. Something else — let me describe what I need
+
+You can also drop a screenshot or image of a paywall you like and I'll recreate it using the Payo SDK.
